@@ -38,6 +38,8 @@ from Config import (
 
 # usability: full names for the message line, a single letter is easy to miss
 DIR_NAMES = {"N": "north", "S": "south", "W": "west", "E": "east"}
+# usability: the keyboard key that does the same as each arrow, shown next to it
+KEY_NAMES = {"N": "Up key", "S": "Down key", "W": "Left key", "E": "Right key"}
 
 
 def _shade(rgb, factor):
@@ -140,6 +142,14 @@ class UI:
             if d == armed_dir:
                 outline = ARROW_WALL_TINT if hit_wall else ARROW_ARMED_TINT
             self._draw_one_arrow(d, cx, cy, ARROW_SIZE_PX, frame, outline)
+
+            # usability: text next to the arrow so you know which key to press
+            # the W one goes on the left, on the right it would sit on the maze
+            lbl = self.font.render(KEY_NAMES[d], True, TEXT)
+            if d == "W":
+                self.surf.blit(lbl, lbl.get_rect(midright=(cx - ARROW_SIZE_PX - 8, cy)))
+            else:
+                self.surf.blit(lbl, lbl.get_rect(midleft=(cx + ARROW_SIZE_PX + 8, cy)))
 
     def _make_checker_surface(self, size, phase):
         """
