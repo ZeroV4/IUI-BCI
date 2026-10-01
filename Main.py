@@ -21,7 +21,10 @@ from Controller import Controller
 
 from pylsl import resolve_byprop as lsl_resolve_byprop, StreamInlet as LSLInlet
 
-from Config import TARGET_FREQS, FREQ_TO_DIR, MAZE_PATH, WINDOW_W, WINDOW_H, MIN_SIDEBAR_PX
+from Config import TARGET_FREQS, FREQ_TO_DIR, MAZE_PATH, WINDOW_W, WINDOW_H, EDGE_PX
+
+# usability: arrow keys in the game window, so you dont need the emulator to play
+KEY_DIRS = {pg.K_UP: "N", pg.K_DOWN: "S", pg.K_LEFT: "W", pg.K_RIGHT: "E"}
 
 
 def nearest_dir_from_freq(f):
@@ -119,7 +122,13 @@ class BCIListener:
 
 
 def main():
-    bci = BCIListener(name="BCI_FREQ", stype="BCI")  # listens for float Hz
+    # usability: BCIListener closes the game when there is no stream after 5 s.
+    # we cant edit it so we catch that and you can still play with the keyboard
+    try:
+        bci = BCIListener(name="BCI_FREQ", stype="BCI")  # listens for float Hz
+    except SystemExit:
+        print("[BCI] no stream, you can still play with the arrow keys")
+        bci = None
 
     clock = pg.time.Clock()
 
@@ -149,18 +158,19 @@ def main():
     # Use the *actual drawable surface* size for all layout math
     screen_w, screen_h = surf.get_size()
 
-    # Compute cell size to maximize maze height, while keeping at least
-    # Config.MIN_SIDEBAR_PX of width for the arrow sidebar.
-    cell_px_h = screen_h // maze.rows
-    cell_px_w = max(1, (screen_w - MIN_SIDEBAR_PX) // maze.cols)
+    # usability: the arrows go on the 4 sides of the maze, so we keep
+    # Config.EDGE_PX free on every side and make the maze as big as fits in the rest
+    cell_px_h = (screen_h - 2 * EDGE_PX) // maze.rows
+    cell_px_w = (screen_w - 2 * EDGE_PX) // maze.cols
     cell_px = max(1, min(cell_px_h, cell_px_w))
 
-    # recompute actual sidebar to fill remaining width exactly
+    # usability: the maze goes in the middle of the window
     maze_w = maze.cols * cell_px
-    sidebar_px = max(MIN_SIDEBAR_PX, screen_w - maze_w)
+    maze_h = maze.rows * cell_px
+    maze_rect = pg.Rect((screen_w - maze_w) // 2, (screen_h - maze_h) // 2, maze_w, maze_h)
 
     # ---- setup UI and Controller objects ----
-    ui = UI(surf, cell_px=cell_px, sidebar_px=sidebar_px)
+    ui = UI(surf, cell_px=cell_px, maze_rect=maze_rect)
     ctrl = Controller(maze, cell_px=cell_px, bci=bci)
 
     ui.frame_idx = 0
@@ -173,6 +183,15 @@ def main():
                 running = False
             elif ev.type == pg.KEYDOWN and ev.key == pg.K_ESCAPE:
                 running = False
+            # usability: arrow keys move the duck right away, they skip the bci cooldown
+            elif ev.type == pg.KEYDOWN and ev.key in KEY_DIRS:
+                ctrl.move(KEY_DIRS[ev.key])
+            # usability: space pauses, the arrows stop flickering so you can rest your eyes or plan the route
+            elif ev.type == pg.KEYDOWN and ev.key == pg.K_SPACE:
+                ctrl.paused = not ctrl.paused
+            # usability: r starts the level again without closing the game
+            elif ev.type == pg.KEYDOWN and ev.key == pg.K_r:
+                ctrl.restart()
 
         ctrl.update(dt)
 
@@ -182,7 +201,11 @@ def main():
             ctrl.pos_rc,
             ctrl.armed_dir,
             steps=ctrl.step_count,
-            elapsed_s=ctrl.elapsed_time
+            elapsed_s=ctrl.elapsed_time,
+            waiting=ctrl._cd_left > 0,  # usability: grey outline while the cooldown runs
+            hit_wall=not ctrl.last_moved,  # usability: red outline and text on a wall bump
+            finished=ctrl.finished,  # usability: goal message
+            paused=ctrl.paused,  # usability: pause message
         )
 
         pg.display.flip()

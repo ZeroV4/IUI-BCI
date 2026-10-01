@@ -29,23 +29,18 @@ MAZE_PATH = "mazes/level0.txt"  # which ASCII maze file to load (see Maze.py)
 
 # --- Window & layout ---
 WINDOW_W, WINDOW_H = 1280, 720   # starting window size (the game maximizes on top of this)
-MIN_SIDEBAR_PX = 200             # minimum width (px) reserved for the arrow sidebar in UI.py
-                                  # -> too small and the arrows/labels get cramped.
-ARROW_SIZE_PX = 36               # fixed size (px) of each sidebar arrow. Unlike MIN_SIDEBAR_PX,
-                                  # this does NOT adjust itself to the window — if you make the
-                                  # sidebar much narrower/shorter than the default, arrows this
-                                  # size may not all fit
+# usability: the arrows sit on the 4 sides of the maze now, this is the free space we keep on every side for them
+EDGE_PX = 120
+# usability: bigger arrows, 36 px was tiny on a big screen. keep it at most EDGE_PX / 2 so the arrow fits in its space
+ARROW_SIZE_PX = 50
 
 # --- Movement feel ---
 WALK_SPEED_PX_S = 150     # currently unused
-MOVE_COOLDOWN_S = 0.25    # seconds to wait after a successful move before accepting the next
+# usability: 0.25 is as fast as the bci sends, so one look walked the duck like 4 cells.
+# with 1 s you get about one step per look, tune it with the headset
+MOVE_COOLDOWN_S = 1.0     # seconds to wait after a move (or a wall bump) before accepting the next
                            # one. Lower = more responsive but easier to overshoot; higher =
                            # safer but feels laggy.
-
-# --- Arrow order in the sidebar (top -> bottom) ---
-# This is PURELY visual — it does not change what each arrow does, only where
-# it is drawn. Reorder this list to test different arrow layouts.
-SIDEBAR_ORDER = ["N", "W", "S", "E"]
 
 # --- Arrow flicker style ---
 # "square" (default) - hard on/off flicker, the classic SSVEP, at
@@ -86,6 +81,9 @@ BG       = (0, 0, 0)
 WALL     = (105, 154, 104)
 PATH     = (153, 209, 1)
 ARROW_ARMED_TINT = (150, 140, 220)  # highlight color when an arrow is "armed" (selected)
+ARROW_WALL_TINT  = (230, 60, 60)    # usability: red outline when you hit a wall so it does not look like a move
+ARROW_WAIT_TINT  = (110, 110, 110)  # usability: grey outline on all arrows while the cooldown runs, the game is not listening then
+FEEDBACK_S = 1.5  # usability: seconds the move or wall highlight stays on the arrow, then it goes away
 CHECKER1         = (255, 255, 255)  # arrow checker-pattern color 1
 CHECKER2         = (0, 0, 0)        # arrow checker-pattern color 2
 
