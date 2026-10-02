@@ -32,8 +32,14 @@ import pygame as pg
 from FlashableIcon import FlashableIcon
 from Config import (
     BG, PANEL, TEXT, CHECKER1, CHECKER2, ARROW_ARMED_TINT, PATH, START, GOAL,
-    FREQUENCIES, SIDEBAR_ORDER, REFRESH_HZ, ARROW_SIZE_PX, ICON_FLICKER_MODE,
+    FREQUENCIES, REFRESH_HZ, ARROW_SIZE_PX, ICON_FLICKER_MODE,
+    EDGE_PX, ARROW_WALL_TINT, ARROW_WAIT_TINT,
 )
+
+# usability: full names for the message line, a single letter is easy to miss
+DIR_NAMES = {"N": "north", "S": "south", "W": "west", "E": "east"}
+# usability: the keyboard key that does the same as each arrow, shown next to it
+KEY_NAMES = {"N": "Up key", "S": "Down key", "W": "Left key", "E": "Right key"}
 
 
 def _shade(rgb, factor):
@@ -47,18 +53,21 @@ def _shade(rgb, factor):
 class UI:
     """
     Renders:
-      - Left sidebar (arrows + tiny HUD)
-      - Maze on the right (walls, path, start/goal)
+      - Maze in the middle of the window (walls, path, start/goal)
+      - One arrow on each side of the maze + tiny HUD in the corner
       - Avatar as rubber_duck.png centered in its cell
     """
-    def __init__(self, surface: pg.Surface, cell_px: int = 48, sidebar_px: int = 200):
+    def __init__(self, surface: pg.Surface, cell_px: int = 48, maze_rect: pg.Rect = None):
         self.surf = surface
         self.cell_px = cell_px
-        self.sidebar_px = sidebar_px
+        # usability: where the maze sits in the window, the arrows go around it
+        self.maze_rect = maze_rect
 
         pg.font.init()
         self.font = pg.font.SysFont("consolas", 16)
         self.small = pg.font.SysFont("consolas", 13)
+        # usability: big text for the goal and pause messages
+        self.big = pg.font.SysFont("consolas", 40)
 
         # avatar image
         img = pg.image.load("rubber_duck.png").convert_alpha()
@@ -73,88 +82,74 @@ class UI:
                       for d, f in FREQUENCIES.items()}
 
     # --------------- public API ---------------
-    def draw(self, maze, pos_rc, armed_dir, steps=0, elapsed_s=0.0):
-        """Draw one full frame: sidebar, maze, avatar, HUD. Call once per frame."""
-        # left panel
-        self._draw_sidebar(armed_dir)
-        # maze area (right)
+    def draw(self, maze, pos_rc, armed_dir, steps=0, elapsed_s=0.0,
+             waiting=False, hit_wall=False, finished=False, paused=False):
+        """Draw one full frame: maze, avatar, arrows, HUD and messages. Call once per frame."""
+        # usability: clear the whole window, the arrows are all around the maze now and not in one sidebar
+        self.surf.fill(BG)
         self._draw_maze(maze)
         self._draw_avatar(pos_rc)
+        # usability: no flicker when paused or done, there is nothing to choose then
+        if not (paused or finished):
+            self._draw_arrows(armed_dir, waiting, hit_wall)
         # small HUD (now includes steps + timer)
         self._draw_hud(maze, pos_rc, steps, elapsed_s)
+        # usability: says what the last command did, moved or hit a wall
+        self._draw_message(armed_dir, hit_wall)
+
+        mins = int(elapsed_s // 60)
+        secs = int(elapsed_s % 60)
+        # usability: tell the player they made it, with the steps and the time
+        if finished:
+            self._draw_banner(f"Goal reached in {steps} steps, {mins:02d}:{secs:02d}", GOAL)
+        # usability: shows that the game is paused and how to go on
+        elif paused:
+            self._draw_banner("Paused, press Space to go on", TEXT)
 
     # --------------- layout helpers ---------------
     def maze_offset(self):
         """Top-left pixel offset of the maze draw area."""
-        return self.sidebar_px, 0
+        return self.maze_rect.topleft
 
     # --------------- drawing ---------------
-    def _draw_sidebar(self, armed_dir):
+    def _draw_arrows(self, armed_dir, waiting, hit_wall):
         """
-        Draw the four flickering arrows and their labels in the left panel.
+        Draw the four flickering arrows, one on each side of the maze.
 
-        This is the main place to make usability changes: arrow size,
-        spacing, order (Config.SIDEBAR_ORDER), colors (Config.CHECKER1/2,
-        Config.ARROW_ARMED_TINT), and whether/how labels are shown. None of
-        this affects which physical frequency each arrow flickers at (that
-        lives in Config.DIRECTIONS) — only how it looks and where it sits.
-
-        This function just does three things, in order:
-          1. draw the panel background + title
-          2. work out where each arrow goes (`_layout_arrow_positions`)
-          3. draw each arrow at its spot (`_draw_one_arrow`)
+        This is the main place to make usability changes to the arrows:
+        size (Config.ARROW_SIZE_PX), the space around the maze
+        (Config.EDGE_PX) and the outline colors (Config.ARROW_*_TINT).
+        None of this affects which physical frequency each arrow flickers
+        at (that lives in Config.DIRECTIONS), only how it looks and where it sits.
         """
-        # 1. panel background + title
-        panel_rect = pg.Rect(0, 0, self.sidebar_px, self.surf.get_height())
-        pg.draw.rect(self.surf, PANEL, panel_rect)
-        title = self.font.render("Controls", True, TEXT)
-        self.surf.blit(title, (12, 10))
+        # usability: each arrow sits on the side it points to, so you can watch the duck while you look at it
+        r = self.maze_rect
+        gap = EDGE_PX // 2  # middle of the free space around the maze
+        spots = {
+            "N": (r.centerx, r.top - gap),
+            "S": (r.centerx, r.bottom + gap),
+            "W": (r.left - gap, r.centery),
+            "E": (r.right + gap, r.centery),
+        }
 
-        # 2. where should each arrow go?
-        dirs = SIDEBAR_ORDER  # top-to-bottom order; reorder in Config.py to try new layouts
-        size, ys = self._layout_arrow_positions(dirs)
-        cx = self.sidebar_px // 2
-
-        # 3. draw each one
         frame = getattr(self, "frame_idx", 0)
-        draw_labels = self.sidebar_px >= 120  # hide labels if the sidebar is too narrow for them
-        label_dx = size + 8  # how far right of the arrow the label sits
-        for d, cy in zip(dirs, ys):
-            self._draw_one_arrow(d, cx, cy, size, frame, is_armed=(armed_dir == d),
-                                  draw_label=draw_labels, label_dx=label_dx)
+        for d, (cx, cy) in spots.items():
+            outline = None
+            # usability: grey outline on every arrow while the cooldown runs
+            if waiting:
+                outline = ARROW_WAIT_TINT
+            # usability: purple when the duck moved, red when it hit a wall
+            if d == armed_dir:
+                outline = ARROW_WALL_TINT if hit_wall else ARROW_ARMED_TINT
+            self._draw_one_arrow(d, cx, cy, ARROW_SIZE_PX, frame, outline)
 
-    def _layout_arrow_positions(self, dirs):
-        """
-        Work out the y-coordinate of each arrow's center: just space them
-        evenly down whatever vertical room the sidebar has.
-
-        Arrow size is NOT computed here! it's the fixed Config.ARROW_SIZE_PX
-        — so this only has to answer one question: where do the centers go?
-        (If the sidebar is unusually short and ARROW_SIZE_PX doesn't fit,
-        arrows may crowd together or overlap the title/HUD — shrink
-        Config.ARROW_SIZE_PX or grow Config.WINDOW_H/MIN_SIDEBAR_PX.)
-
-        Returns (size, list_of_y_centers) — one y per entry in `dirs`, all
-        sharing the same horizontal center (self.sidebar_px // 2).
-        """
-        size = ARROW_SIZE_PX
-        panel_h = self.surf.get_height()
-        top_margin = 44 + size        # below the title, room for the first arrow
-        bottom_margin = 40 + 12 + size  # room for the last arrow + the HUD text
-
-        y_min = top_margin
-        y_max = max(y_min, panel_h - bottom_margin)
-
-        # Always return exactly one y per direction, even if the window is
-        # so short that y_min == y_max — in that case every arrow lands on
-        # the same spot (visually overlapping) rather than some arrows
-        # being dropped, which would make a whole direction disappear.
-        if len(dirs) == 1:
-            ys = [int((y_min + y_max) * 0.5)]
-        else:
-            ys = [int(y) for y in np.linspace(y_min, y_max, num=len(dirs))]
-
-        return size, ys
+            # usability: text next to the arrow so you know which key to press
+            # the W one goes on the left, on the right it would sit on the maze
+            lbl = self.font.render(KEY_NAMES[d], True, TEXT)
+            if d == "W":
+                self.surf.blit(lbl, lbl.get_rect(midright=(cx - ARROW_SIZE_PX - 8, cy)))
+            else:
+                self.surf.blit(lbl, lbl.get_rect(midleft=(cx + ARROW_SIZE_PX + 8, cy)))
 
     def _make_checker_surface(self, size, phase):
         """
@@ -191,8 +186,8 @@ class UI:
         surf.fill(color)
         return surf
 
-    def _draw_one_arrow(self, d, cx, cy, size, frame, is_armed, draw_label, label_dx):
-        """Draw a single flickering arrow centered at (cx, cy), plus its label/highlight."""
+    def _draw_one_arrow(self, d, cx, cy, size, frame, outline=None):
+        """Draw a single flickering arrow centered at (cx, cy), plus its outline color (if any)."""
         icon = self.icons.get(d)
         brightness = icon.luminance(frame) if icon is not None else 0.0
 
@@ -217,13 +212,11 @@ class UI:
         rect = fill_surf.get_rect(center=(cx, cy))
         self.surf.blit(fill_surf, rect)
 
-        if is_armed:
-            pg.draw.polygon(self.surf, ARROW_ARMED_TINT,
-                            [(x + cx - size, y + cy - size) for (x, y) in poly], 3)
-
-        if draw_label:
-            lbl = self.small.render(d, True, TEXT)
-            self.surf.blit(lbl, (min(self.sidebar_px - 16, cx + label_dx), cy - 8))
+        # usability: the outline color says wait, moved or wall. no outline when nothing happened
+        # 5 px and not 3 so you still see it while you stare at the arrow
+        if outline:
+            pg.draw.polygon(self.surf, outline,
+                            [(x + cx - size, y + cy - size) for (x, y) in poly], 5)
 
     def _draw_wall_tile(self, x, y, cp, is_bottom_of_run, is_rightmost_of_run):
         """Draw one wall cell with a simple pseudo-3D "cap + front + side" look."""
@@ -319,7 +312,7 @@ class UI:
         return [(cx, cy)]
 
     def _draw_hud(self, maze, pos_rc, steps=0, elapsed_s=0.0):
-        """Draw the small "position / goal / steps / time" readout at the bottom of the sidebar."""
+        """Draw the small "position / goal / steps / time" readout and the key hint at the top left."""
         r, c = pos_rc
         # Line 1: position + goal
         line1 = f"r:{r} c:{c}   goal:{maze.goal}"
@@ -332,9 +325,35 @@ class UI:
         img1 = self.small.render(line1, True, TEXT)
         img2 = self.small.render(line2, True, TEXT)
 
-        base_y = self.surf.get_height() - 40  # leave 40px bottom margin
-        self.surf.blit(img1, (12, base_y))
-        self.surf.blit(img2, (12, base_y + 18))
+        # usability: the hud goes in the top left corner, the left side is for the W arrow now
+        self.surf.blit(img1, (12, 10))
+        self.surf.blit(img2, (12, 28))
+
+        # usability: so you know the keys work in this window too
+        hint = self.small.render("arrows: move   space: pause   r: restart   esc: quit", True, TEXT)
+        self.surf.blit(hint, (12, 46))
+
+    # usability: one line in the bottom left that says what the last command did
+    def _draw_message(self, armed_dir, hit_wall):
+        """Draw "Moved north" or "Wall to the east" (in red) while the highlight is on."""
+        if not armed_dir:
+            return
+        name = DIR_NAMES[armed_dir]
+        if hit_wall:
+            text, color = f"Wall to the {name}", ARROW_WALL_TINT
+        else:
+            text, color = f"Moved {name}", TEXT
+        img = self.font.render(text, True, color)
+        self.surf.blit(img, (12, self.surf.get_height() - 30))
+
+    # usability: big text in a box over the middle of the maze, for the goal and pause messages
+    def _draw_banner(self, text, color):
+        """Draw `text` big and centered on the maze, in a dark box with a `color` border."""
+        img = self.big.render(text, True, color)
+        box = img.get_rect(center=self.maze_rect.center).inflate(40, 30)
+        pg.draw.rect(self.surf, PANEL, box)
+        pg.draw.rect(self.surf, color, box, 3)
+        self.surf.blit(img, img.get_rect(center=box.center))
 
     def draw_eeg_scope(self, eeg_8xN: np.ndarray):
         """
@@ -355,13 +374,13 @@ class UI:
         left_margin = 8
         right_margin = 8
         top = 44 + 4 * 48 + 30              # under your 4 arrows
-        width = self.sidebar_px - (left_margin + right_margin)
+        width = self.maze_rect.left - (left_margin + right_margin)  # usability: no sidebar anymore, we use the space left of the maze
         height = self.surf.get_height() - top - 8
         if height <= 60 or width <= 10:
             return
 
         # panel bg
-        panel = pg.Rect(0, top - 8, self.sidebar_px, height + 16)
+        panel = pg.Rect(0, top - 8, self.maze_rect.left, height + 16)
         pg.draw.rect(self.surf, (22, 22, 22), panel)
 
         data = eeg_8xN

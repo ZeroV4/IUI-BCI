@@ -243,5 +243,5 @@ def live_psd_and_ssvep(
     n = eeg_window_uv.shape[0]
     n_cca = max(1, int(cca_window_sec * fs))
     seg = eeg_window_uv[-n_cca:, :]
-    pred, scores = classify_ssvep_cca(seg, fs, target_freqs, n_harmonics=3, bandpass=(6, 30))
+    pred, scores = classify_ssvep_cca(seg, fs, target_freqs, n_harmonics=3, bandpass=(3, 30))
     return psd, SSVEPResult(pred, scores)

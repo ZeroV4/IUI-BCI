@@ -25,27 +25,24 @@ import numpy as np
 # =====================================================================
 
 # --- Maze ---
-MAZE_PATH = "mazes/level0.txt"  # which ASCII maze file to load (see Maze.py)
+# usability: the levels in order, the game starts with the first one and loads the next one when you reach the goal
+LEVELS = ["mazes/level0.txt", "mazes/level1.txt", "mazes/level2.txt", "mazes/level3.txt"]
+NEXT_LEVEL_S = 3.0  # usability: seconds the goal message stays before the next level loads
 
 # --- Window & layout ---
 WINDOW_W, WINDOW_H = 1280, 720   # starting window size (the game maximizes on top of this)
-MIN_SIDEBAR_PX = 200             # minimum width (px) reserved for the arrow sidebar in UI.py
-                                  # -> too small and the arrows/labels get cramped.
-ARROW_SIZE_PX = 36               # fixed size (px) of each sidebar arrow. Unlike MIN_SIDEBAR_PX,
-                                  # this does NOT adjust itself to the window — if you make the
-                                  # sidebar much narrower/shorter than the default, arrows this
-                                  # size may not all fit
+# usability: the arrows sit on the 4 sides of the maze now, this is the free space we keep on every side for them
+EDGE_PX = 120
+# usability: bigger arrows, 36 px was tiny on a big screen. keep it at most EDGE_PX / 2 so the arrow fits in its space
+ARROW_SIZE_PX = 50
 
 # --- Movement feel ---
 WALK_SPEED_PX_S = 150     # currently unused
-MOVE_COOLDOWN_S = 0.25    # seconds to wait after a successful move before accepting the next
+# usability: 0.25 is as fast as the bci sends, so one look walked the duck like 4 cells.
+# with 1 s you get about one step per look, tune it with the headset
+MOVE_COOLDOWN_S = 1.0     # seconds to wait after a move (or a wall bump) before accepting the next
                            # one. Lower = more responsive but easier to overshoot; higher =
                            # safer but feels laggy.
-
-# --- Arrow order in the sidebar (top -> bottom) ---
-# This is PURELY visual — it does not change what each arrow does, only where
-# it is drawn. Reorder this list to test different arrow layouts.
-SIDEBAR_ORDER = ["N", "W", "S", "E"]
 
 # --- Arrow flicker style ---
 # "square" (default) - hard on/off flicker, the classic SSVEP, at
@@ -58,7 +55,7 @@ SIDEBAR_ORDER = ["N", "W", "S", "E"]
 #                       full explanation, and re-check FREQ_THRESHOLDS
 #                       below if you switch, since they were tuned for
 #                       the square-wave flicker.
-ICON_FLICKER_MODE = "square"
+ICON_FLICKER_MODE = "cosine"  # usability: each arrow is one solid color that fades, softer on the eyes and any hz works
 
 # In "square" mode, an arrow's "hz" (below) must be one of these exact
 # values. Each one was chosen so that REFRESH_HZ / hz comes out to a whole,
@@ -86,6 +83,9 @@ BG       = (0, 0, 0)
 WALL     = (105, 154, 104)
 PATH     = (153, 209, 1)
 ARROW_ARMED_TINT = (150, 140, 220)  # highlight color when an arrow is "armed" (selected)
+ARROW_WALL_TINT  = (230, 60, 60)    # usability: red outline when you hit a wall so it does not look like a move
+ARROW_WAIT_TINT  = (110, 110, 110)  # usability: grey outline on all arrows while the cooldown runs, the game is not listening then
+FEEDBACK_S = 1.5  # usability: seconds the move or wall highlight stays on the arrow, then it goes away
 CHECKER1         = (255, 255, 255)  # arrow checker-pattern color 1
 CHECKER2         = (0, 0, 0)        # arrow checker-pattern color 2
 
@@ -141,11 +141,17 @@ CHECKER2         = (0, 0, 0)        # arrow checker-pattern color 2
 
 REFRESH_HZ = 60  # assumed display refresh rate (see FlashableIcon.py)
 
+# usability: new frequencies for cosine mode, there the brain answers at the hz itself.
+# 4.29 was under the 6 hz filter in FrequencyAnalysis.py so up could never really be seen,
+# and 10 sits on the normal brain rhythm (about 9 to 11 hz) so down fired by itself.
+# these are all inside the filter, away from 9 to 11, between 4 and 15 hz and none is a double or triple of another
+# usability: up has the highest threshold because the slowest arrow gets picked by noise the most,
+# the faster arrows get less noise so they can have a lower one. tune with the headset
 DIRECTIONS = {
-    "N": {"vector": (-1, 0), "hz": 4.29,   "threshold": 0.80},  # -> 14  frames
-    "W": {"vector": (0, -1), "hz": 6,    "threshold": 0.80},  # -> 10 frames
-    "S": {"vector": (1, 0),  "hz": 10, "threshold": 0.80},  # -> 6 frames
-    "E": {"vector": (0, 1),  "hz": 15,   "threshold": 0.60},  # -> 4  frames
+    "N": {"vector": (-1, 0), "hz": 7,    "threshold": 0.68},
+    "W": {"vector": (0, -1), "hz": 8.5,  "threshold": 0.64},
+    "S": {"vector": (1, 0),  "hz": 12.5, "threshold": 0.56},
+    "E": {"vector": (0, 1),  "hz": 14.5, "threshold": 0.52},
 }
 
 # --- Everything below this line is DERIVED from DIRECTIONS above. ---

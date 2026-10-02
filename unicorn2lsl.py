@@ -18,7 +18,7 @@ import random
 import numpy as np
 from pylsl import StreamInfo, StreamOutlet
 
-device = "COM8"
+device = "/dev/rfcomm0"
 blocksize = 0.2
 timeout = 5
 nchan = 16
