@@ -25,7 +25,9 @@ import numpy as np
 # =====================================================================
 
 # --- Maze ---
-MAZE_PATH = "mazes/level0.txt"  # which ASCII maze file to load (see Maze.py)
+# usability: the levels in order, the game starts with the first one and loads the next one when you reach the goal
+LEVELS = ["mazes/level0.txt", "mazes/level1.txt", "mazes/level2.txt", "mazes/level3.txt"]
+NEXT_LEVEL_S = 3.0  # usability: seconds the goal message stays before the next level loads
 
 # --- Window & layout ---
 WINDOW_W, WINDOW_H = 1280, 720   # starting window size (the game maximizes on top of this)

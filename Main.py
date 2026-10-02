@@ -21,7 +21,7 @@ from Controller import Controller
 
 from pylsl import resolve_byprop as lsl_resolve_byprop, StreamInlet as LSLInlet
 
-from Config import TARGET_FREQS, FREQ_TO_DIR, MAZE_PATH, WINDOW_W, WINDOW_H, EDGE_PX
+from Config import TARGET_FREQS, FREQ_TO_DIR, LEVELS, NEXT_LEVEL_S, WINDOW_W, WINDOW_H, EDGE_PX
 
 # usability: arrow keys in the game window, so you dont need the emulator to play
 KEY_DIRS = {pg.K_UP: "N", pg.K_DOWN: "S", pg.K_LEFT: "W", pg.K_RIGHT: "E"}
@@ -121,6 +121,33 @@ class BCIListener:
 # ---------------------------------------------------------------------------
 
 
+# usability: builds one level, we call it at the start and again every time you reach the goal
+def load_level(surf, path, bci):
+    """Load the maze at `path` and make a fresh UI and Controller for it."""
+    lines = read_ascii_maze(path)
+    maze = Maze(lines)
+
+    # Use the *actual drawable surface* size for all layout math
+    screen_w, screen_h = surf.get_size()
+
+    # usability: the arrows go on the 4 sides of the maze, so we keep
+    # Config.EDGE_PX free on every side and make the maze as big as fits in the rest
+    cell_px_h = (screen_h - 2 * EDGE_PX) // maze.rows
+    cell_px_w = (screen_w - 2 * EDGE_PX) // maze.cols
+    cell_px = max(1, min(cell_px_h, cell_px_w))
+
+    # usability: the maze goes in the middle of the window
+    maze_w = maze.cols * cell_px
+    maze_h = maze.rows * cell_px
+    maze_rect = pg.Rect((screen_w - maze_w) // 2, (screen_h - maze_h) // 2, maze_w, maze_h)
+
+    # ---- setup UI and Controller objects ----
+    ui = UI(surf, cell_px=cell_px, maze_rect=maze_rect)
+    ui.frame_idx = 0
+    ctrl = Controller(maze, cell_px=cell_px, bci=bci)
+    return maze, ui, ctrl
+
+
 def main():
     # usability: BCIListener closes the game when there is no stream after 5 s.
     # we cant edit it so we catch that and you can still play with the keyboard
@@ -131,10 +158,6 @@ def main():
         bci = None
 
     clock = pg.time.Clock()
-
-    # --- load maze from file (change which maze loads via Config.MAZE_PATH) ---
-    lines = read_ascii_maze(MAZE_PATH)
-    maze = Maze(lines)
 
     # --- pygame / window ---
     pg.init()
@@ -155,25 +178,11 @@ def main():
         h = max(600, info.current_h - 120)
         surf = pg.display.set_mode((w, h), flags)
 
-    # Use the *actual drawable surface* size for all layout math
-    screen_w, screen_h = surf.get_size()
+    # usability: start with the first maze in Config.LEVELS
+    level = 0
+    maze, ui, ctrl = load_level(surf, LEVELS[level], bci)
+    goal_wait = 0.0  # usability: how long the goal message has been on screen
 
-    # usability: the arrows go on the 4 sides of the maze, so we keep
-    # Config.EDGE_PX free on every side and make the maze as big as fits in the rest
-    cell_px_h = (screen_h - 2 * EDGE_PX) // maze.rows
-    cell_px_w = (screen_w - 2 * EDGE_PX) // maze.cols
-    cell_px = max(1, min(cell_px_h, cell_px_w))
-
-    # usability: the maze goes in the middle of the window
-    maze_w = maze.cols * cell_px
-    maze_h = maze.rows * cell_px
-    maze_rect = pg.Rect((screen_w - maze_w) // 2, (screen_h - maze_h) // 2, maze_w, maze_h)
-
-    # ---- setup UI and Controller objects ----
-    ui = UI(surf, cell_px=cell_px, maze_rect=maze_rect)
-    ctrl = Controller(maze, cell_px=cell_px, bci=bci)
-
-    ui.frame_idx = 0
     running = True
     while running:
         dt = clock.tick(60) / 1000.0
@@ -194,6 +203,16 @@ def main():
                 ctrl.restart()
 
         ctrl.update(dt)
+
+        # usability: after the goal message was shown for NEXT_LEVEL_S seconds we load the next level by ourselves
+        # on the last level the message just stays, r plays it again
+        if ctrl.finished and level + 1 < len(LEVELS):
+            goal_wait += dt
+            if goal_wait >= NEXT_LEVEL_S:
+                level += 1
+                maze, ui, ctrl = load_level(surf, LEVELS[level], bci)
+        else:
+            goal_wait = 0.0  # usability: if you press r on the goal message the wait starts over next time
 
         # draw frame
         ui.draw(
