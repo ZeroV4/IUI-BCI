@@ -46,7 +46,8 @@ DEFAULT_TYPE = "EEG"
 DEFAULT_FS   = 250
 N_CH         = 8
 
-WINDOW_SEC   = 1.0       # rolling window seconds
+# usability: 2 s and not 1 s. with 1 s, plain brain noise scored about as high as a real look and moved the duck by itself
+WINDOW_SEC   = 2.0       # rolling window seconds
 FPS          = 60         # UI FPS
 WIN_W, WIN_H = 1200, 620  # window size (wider for sidebar)
 
@@ -94,7 +95,9 @@ class LSLReader:
         self.n = max(100, int(win_sec * self.fs))
         self.buf = np.zeros((N_CH, self.n), dtype=np.float32)
         self.idx = 0
-        self.lock = threading.Lock()
+        # usability: RLock and not Lock, resize_window locks and then calls snapshot which locks again,
+        # with a normal Lock that waits for itself forever and the window froze when you pressed left or right
+        self.lock = threading.RLock()
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()

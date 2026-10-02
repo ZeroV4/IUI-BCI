@@ -55,7 +55,7 @@ MOVE_COOLDOWN_S = 1.0     # seconds to wait after a move (or a wall bump) before
 #                       full explanation, and re-check FREQ_THRESHOLDS
 #                       below if you switch, since they were tuned for
 #                       the square-wave flicker.
-ICON_FLICKER_MODE = "square"
+ICON_FLICKER_MODE = "cosine"  # usability: each arrow is one solid color that fades, softer on the eyes and any hz works
 
 # In "square" mode, an arrow's "hz" (below) must be one of these exact
 # values. Each one was chosen so that REFRESH_HZ / hz comes out to a whole,
@@ -141,11 +141,17 @@ CHECKER2         = (0, 0, 0)        # arrow checker-pattern color 2
 
 REFRESH_HZ = 60  # assumed display refresh rate (see FlashableIcon.py)
 
+# usability: new frequencies for cosine mode, there the brain answers at the hz itself.
+# 4.29 was under the 6 hz filter in FrequencyAnalysis.py so up could never really be seen,
+# and 10 sits on the normal brain rhythm (about 9 to 11 hz) so down fired by itself.
+# these are all inside the filter, away from 9 to 11, between 4 and 15 hz and none is a double or triple of another
+# usability: up has the highest threshold because the slowest arrow gets picked by noise the most,
+# the faster arrows get less noise so they can have a lower one. tune with the headset
 DIRECTIONS = {
-    "N": {"vector": (-1, 0), "hz": 4.29,   "threshold": 0.80},  # -> 14  frames
-    "W": {"vector": (0, -1), "hz": 6,    "threshold": 0.80},  # -> 10 frames
-    "S": {"vector": (1, 0),  "hz": 10, "threshold": 0.80},  # -> 6 frames
-    "E": {"vector": (0, 1),  "hz": 15,   "threshold": 0.60},  # -> 4  frames
+    "N": {"vector": (-1, 0), "hz": 7,    "threshold": 0.68},
+    "W": {"vector": (0, -1), "hz": 8.5,  "threshold": 0.64},
+    "S": {"vector": (1, 0),  "hz": 12.5, "threshold": 0.56},
+    "E": {"vector": (0, 1),  "hz": 14.5, "threshold": 0.52},
 }
 
 # --- Everything below this line is DERIVED from DIRECTIONS above. ---
